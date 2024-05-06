@@ -1,6 +1,13 @@
 """
-VMIPS Vector Processor Timing Simulator
+VMIPS Vector Processor Timing Simulator with Chaining
 Authors: Gaurav Kuwar, Ritvik Nair
+
+Plan:
+- Add chaining
+- No breaks in pipeline when running 2 intrs of the same type back to back
+  on a functional/memory unit.
+- Reduce stall when doing register reads
+- further assembly code optimization (tomosulu in software?)
 """
 
 import os
@@ -15,6 +22,8 @@ allVecComputeInstrs = {'ADDVV', 'SUBVV', 'MULVV', 'DIVVV', 'UNPACKHI', 'UNPACKLO
                        'ADDVS', 'SUBVS', 'MULVS', 'DIVVS',
                        'SEQVV', 'SNEVV', 'SGTVV', 'SLTVV', 'SGEVV', 'SLEVV',
                        'SEQVS', 'SNEVS', 'SGTVS', 'SLTVS', 'SGEVS', 'SLEVS'}
+
+allVecMemInstrs = {"LV", "SV", "LVWS", "SVWS", "LVI", "SVI"}
 
 vectorMaskRegOps = {'SEQVV', 'SNEVV', 'SGTVV', 'SLTVV', 'SGEVV', 'SLEVV',
                     'SEQVS', 'SNEVS', 'SGTVS', 'SLTVS', 'SGEVS', 'SLEVS'}
@@ -36,6 +45,12 @@ def regIdx(reg):
 
 def isReg(op): # checks if the operand is a reg val
     return type(op) == str and (op.startswith("SR") or op.startswith("VR")) and op[2:].isdigit()
+
+def isVecInstr(instr):
+    return instr.name in allVecMemInstrs or instr.name in vectorMaskRegOps
+
+def isVecReg(op):
+    return type(op) == str and op.startswith("VR") and op[2:].isdigit()
 
 def instr2Func(instr):
     if (instr.name in {'ADDVV', 'ADDVS', 'SUBVV', 'SUBVS'} or 
@@ -113,17 +128,20 @@ class BusyBoard:
     """
     
     def __init__(self):
+        self.bbv = [[0] * MAX_VECTOR_LEN for _ in range(REG_COUNT)]
         self.bb = [0] * (REG_COUNT * 2 + 2)
 
-    def regBusy(self, instr):
+    def regBusy(self, instr, idx=0):
         "check if the regs in the instr are busy"
         for op in (instr.op1, instr.op2, instr.op3):
-            if isReg(op):
+            if isVecReg(op):
+                self.bbv[regIdx(op)][idx] = 1
+            elif isReg(op):
                 if self.bb[regIdx(op)] == 1:
                     return True
         return False
         
-    def add(self, instr):
+    def add(self, instr, idx=0):
         "add the regs in instr to busy board"
         # for vector mask
         if instr.name in {"CVM", "POP"} or instr.name in vectorMaskRegOps:
@@ -132,12 +150,15 @@ class BusyBoard:
         # for vector len
         if instr.name in {"MTCL", "MFCL"}:
             self.bb[-1] = 1
-        
-        for op in (instr.op1, instr.op2, instr.op3):
-            if isReg(op):
-                self.bb[regIdx(op)] = 1
-                
-    def clear(self, instr):
+
+        if not isVecInstr(instr):
+            for op in (instr.op1, instr.op2, instr.op3):
+                if isVecReg(op):
+                    self.bbv[regIdx(op)][idx] = 1
+                elif isReg(op):
+                    self.bb[regIdx(op)] = 1
+
+    def clear(self, instr, idx=0):
         "clear regs in instr from busy board"
         # for vector mask
         if instr.name in {"CVM", "POP"} or instr.name in vectorMaskRegOps:
@@ -148,11 +169,31 @@ class BusyBoard:
             self.bb[-1] = 0
             
         for op in (instr.op1, instr.op2, instr.op3):
-            if isReg(op):
+            if isVecReg(op):
+                self.bbv[regIdx(op)][idx] = 0
+            elif isReg(op):
                 self.bb[regIdx(op)] = 0
+                
+    # Optimized
+    # def regBusyV(self, instr, idx):
+    #     for op in (instr.op1, instr.op2, instr.op3):
+    #         if isReg(op):
+    #             if self.bb[regIdx(op)][idx] == 1:
+    #                 return True
+
+    # def addV(self, instr, idx):
+    #     # is vector instr
+    #     for op in (instr.op1, instr.op2, instr.op3):
+    #         self.bbv[regIdx(op)][idx] = 1
+
+    # def clearV(self, instr, idx):
+    #     # is vector instr
+    #     for op in (instr.op1, instr.op2, instr.op3):
+    #         self.bbv[regIdx(op)][idx] = 0
+                
 
     def __repr__(self):
-        return f"{self.bb}"
+        return f"{self.bb}\n" + "\n".join(map(str, self.bbv))
     
 # ---- Compute and Data Unit Classes ----
 
@@ -172,9 +213,11 @@ class VectorComputeUnit:
         self.vector = []
         self.i = 0 # vector index
         self.instr = None
+        self.processed = 0
 
     def inputVec(self, vlen):
         self.i = 0
+        self.processed = 0
         self.vector = list(range(vlen)) # could just be the same val
 
     def busy(self):
@@ -187,15 +230,17 @@ class VectorComputeUnit:
     def update(self):
         if self.busy() or len(self.vector) > self.i:
             for laneIdx in range(len(self.lanes)):
-                shift(self.lanes[laneIdx])
+                if shift(self.lanes[laneIdx]) is not None:
+                    self.processed += 1
 
                 # add to new to start of lane
                 if self.i < len(self.vector):
                     self.lanes[laneIdx][0] = self.vector[self.i]
                     
                 self.i += 1
-                
-            # print(self.lanes)
+
+            print(self.lanes) # DEBUG
+
 
 class VectorDataUnit:
     """
@@ -250,8 +295,8 @@ class VectorDataUnit:
                         
                 self.i += 1
     
-            # print(self.lanes)
-            # print(self.banks)
+            print(self.lanes) # DEBUG
+            print(self.banks) # DEBUG
             
             # update bank state
             for bankIdx in range(self.numOfBanks):
@@ -314,12 +359,12 @@ class TimingSim:
         instr = Instr(instrStr)
 
         # check if any registers are busy, and stall if they are
-        if self.busyboard.regBusy(instr): # checks data hazards
+        if self.busyboard.regBusy(instr, 0): # checks data hazards
             self.stallFetch = True
             return
 
         # set regs high on busy board
-        self.busyboard.add(instr)
+        self.busyboard.add(instr, 0)
 
         # checks if queue is full and stall if it is
         if instr.isVecMem():                
@@ -415,22 +460,36 @@ class TimingSim:
                 self.s_instr = None
         
             self.vdata.update()
+            if self.vdata.instr:
+                for idx in range(min(self.vdata.i+1, MAX_VECTOR_LEN-1)):
+                    self.busyboard.clear(self.vdata.instr, idx)
+            
             if self.vdata.instr and not self.vdata.busy():
                 self.busyboard.clear(self.vdata.instr)
                 self.vdata.instr = None
             
             for func in self.units:
-                self.units[func].update()
+                print(func)
+                if self.units[func].instr:
+                    print(self.units[func].i)
+                    if not self.busyboard.regBusy(self.units[func].instr, self.units[func].i):
+                        self.units[func].update()
+
+                    print("processed", self.units[func].processed)
+                    for idx in range(self.units[func].processed):#min(self.units[func].i+1, MAX_VECTOR_LEN-1)):
+                        self.busyboard.clear(self.units[func].instr, idx)
                 
                 if self.units[func].instr and not self.units[func].busy():
                     self.busyboard.clear(self.units[func].instr)
                     self.units[func].instr = None
+                    
+                print()
             
             # Frontend
             # --------------
             # decode stage
             if not self.stallDecode:
-                # print("DS:", self.instrBuf) # DEBUG         
+                print("DS:", self.instrBuf) # DEBUG         
                 self.decode(self.instrBuf)
                 
                 if self.instrBuf == "HALT":
@@ -440,7 +499,7 @@ class TimingSim:
             if not self.stallFetch:
                 self.instrBuf = self.fetch()
                 
-                # print("IF:", self.instrBuf) # DEBUG
+                print("IF:", self.instrBuf) # DEBUG
                 
                 if self.instrBuf == "HALT":
                     # stall fetch in the next cycle
@@ -455,11 +514,11 @@ class TimingSim:
                 # this allows us to stall fetch, until decode stage doesn't stall it
                 self.stallFetch = False
 
-            # print("Scalar Q:", self.scalarQ.q) # DEBUG
-            # print("VecCom Q:", self.vectorComputeQ.q) # DEBUG
-            # print("VecDat Q:", self.vectorDataQ.q) # DEBUG
-            # print("BusyBoard", self.busyboard) # DEBUG
-            # print() # DEBUG
+            print("Scalar Q:", self.scalarQ.q) # DEBUG
+            print("VecCom Q:", self.vectorComputeQ.q) # DEBUG
+            print("VecDat Q:", self.vectorDataQ.q) # DEBUG
+            print("BusyBoard", self.busyboard) # DEBUG
+            print() # DEBUG
             
         return self.cycle
 
