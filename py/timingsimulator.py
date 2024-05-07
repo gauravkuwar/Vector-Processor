@@ -479,7 +479,7 @@ if __name__ == "__main__":
     config = Config(iodir)
     
     print("Running func simulator...")
-    os.system(f'python3 funcsimulator.py -t --iodir "{iodir}" > out.txt')
+    os.system(f'python3 funcsimulator.py -t --iodir "{iodir}" > .tmp.out')
     print("Saved output of func simulator in out.txt")
 
     tracefp = os.path.abspath(os.path.join(iodir, "trace.asm"))

@@ -1,35 +1,55 @@
-"script to do test on assembly code using random inputs"
+"""
+script to do test on assembly code using random inputs
+for dot product, convolution, fully connected layer (matrix multiplication)
+"""
 import numpy as np
 import os
+
+# random int range
+MIN_VAL = -128
+MAX_VAL = 128
+
+# fcl dims
+FCL_A_SHAPE = (256,)
+FCL_W_SHAPE = (256, 256)
+FCL_B_SHAPE = (256,)
+
+# conv dims
+CONV_F_SHAPE = (256, 256)
+CONV_G_SHAPE = (3, 3) # kernel
+
+# dot product dims
+DP_A_SHAPE = (450)
+DP_B_SHAPE = (450) # kernel
 
 # generate random data funcs
 def generate_fcl_data():
     # fully connectted layer
-    a = np.random.randint(-128, 128, (256,))
-    W = np.random.randint(-128, 128, (256, 256))
-    b = np.random.randint(-128, 128, (256,))    
-    
+    a = np.random.randint(MIN_VAL, MAX_VAL, FCL_A_SHAPE)
+    W = np.random.randint(MIN_VAL, MAX_VAL, FCL_W_SHAPE)
+    b = np.random.randint(MIN_VAL, MAX_VAL, FCL_B_SHAPE)    
     return a, W, b
 
 def generate_conv_data():
     # convolution
-    f = np.random.randint(-128, 128, (256, 256))
-    g = np.random.randint(-128, 128, (3, 3))
-    
+    f = np.random.randint(MIN_VAL, MAX_VAL, CONV_F_SHAPE)
+    g = np.random.randint(MIN_VAL, MAX_VAL, CONV_G_SHAPE)
     return f, g
 
 def generate_dp_data():
     # dot product
-    a = np.random.randint(-128, 128, (450))
-    b = np.random.randint(-128, 128, (450))
-    
+    a = np.random.randint(MIN_VAL, MAX_VAL, DP_A_SHAPE)
+    b = np.random.randint(MIN_VAL, MAX_VAL, DP_B_SHAPE)
     return a, b
 
 # convolution func for 256x256 input and 3x3 kernel
 def conv2d(f, g, stride=2, padding=1):
-    fwp = np.zeros((256+padding, 256+padding))
+    fwp_shape = (CONV_F_SHAPE[0]+padding, CONV_F_SHAPE[0]+padding)
+    out_shape = (128, 128)
+
+    fwp = np.zeros(fwp_shape)
     fwp[:-1, :-1] = f # f with padding
-    res = np.zeros((128, 128))
+    res = np.zeros(out_shape)
 
     rows, cols = f.shape
     grows, gcols = g.shape
@@ -48,6 +68,29 @@ def conv2d(f, g, stride=2, padding=1):
 #     idx=(np.arange(0,cc.shape[1],s), np.arange(0,cc.shape[0],s))
 #     xidx,yidx=np.meshgrid(*idx)
 #     return np.round(cc[yidx,xidx])
+
+"""
+make arg --iodir for consistency
+
+SDMEM changes (only conv changes this)
+VDMEM changes
+
+Update both SDMEM and VDMEM
+
+Note: result always in VDMEM
+extract as array
+Dot product
+    - result in 2048
+
+FCL
+    - result in 0 - 256
+
+Conv
+    - result in 0 - (128*128)
+
+FFT (WIP)
+
+"""
 
 def run(dir, tests=1):
     match = 0
