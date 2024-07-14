@@ -1,18 +1,29 @@
 # Makefile
 CC = gcc
-CFLAGS = -Wall -Wextra -std=c11
-HELPERS_DIR = ../helpers
+
+# Compiler flags
+CFLAGS = -Iinclude -Wall -Wextra
+
+SRC = src/main.c src/hashmap.c src/instrs_maps.c # Source files
+OBJ = $(SRC:.c=.o) # Object files
+EXEC = funcsim
 
 all: funcsim
 
-funcsim: main.o $(HELPERS_DIR)/container.o
-	$(CC) $(CFLAGS) -o funcsim main.o $(HELPERS_DIR)/container.o
+# Default target
+all: $(EXEC)
 
-main.o: main.c $(HELPERS_DIR)/container.h
-	$(CC) $(CFLAGS) -c main.c
+# Rule to link object files to create the executable
+$(EXEC): $(OBJ)
+	$(CC) $(OBJ) -o $(EXEC)
 
-$(HELPERS_DIR)/container.o: $(HELPERS_DIR)/container.c $(HELPERS_DIR)/container.h
-	$(CC) $(CFLAGS) -c $(HELPERS_DIR)/container.c -o $(HELPERS_DIR)/container.o
+# Rule to compile .c files into .o files
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
+# Clean up the build files
 clean:
-	rm -f *.o $(HELPERS_DIR)/*.o funcsim
+	rm -f $(OBJ)
+
+# Phony targets
+.PHONY: all clean

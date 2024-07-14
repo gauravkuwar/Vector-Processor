@@ -2,8 +2,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdbool.h>
-#include "../helpers/container.h"
-// #include "instrs_sets.h"
+// #include "container.h"
+#include "instrs_maps.h"
 
 // 32 bit words
 #define MAX_VEC_LEN 64
@@ -140,14 +140,14 @@ int verify(struct Instr *instrs, int num_of_instrs) {
     // verify if all instructions are valid else return error
     for (int i=0; i<num_of_instrs; i++) {
         // check if its in set of all instructions
-        // if (!contains(instrs[i].name, all_instrs)) {
-        //     fprintf(stderr, "Error: invalid \n"); // need line number
-        //     return -1;
-        // }
+        if (!map_contains(instrs[i].name, all_instrs)) {
+            fprintf(stderr, "Error: invalid instruction %s\n", instrs[i].name); // TODO: could add line number here
+            return -1;
+        }
         
         // check if each instruction has correct num of operands
-        // int num_of_operands = !str_is_null(instrs[i].op1) + !str_is_null(instrs[i].op2) + !str_is_null(instrs[i].op3);
-        // map instrs[i].name -> correct_num_of_operands
+        int num_of_operands = !str_is_null(instrs[i].op1) + !str_is_null(instrs[i].op2) + !str_is_null(instrs[i].op3);
+        // instrs[i].name -> correct_num_of_operands
         // if (instrs[i].name)
         
         // check if each operand is of correct type: scalar, vector, immediate
@@ -202,6 +202,8 @@ int main(int argc, char *argv[]) {
     fetch_decode(asm_file, instrs, num_of_instrs);
     fclose(asm_file);
     
+    init_instr_maps(); // initialize instruction sets
+
     // verify correctness of assembly code
     verify(instrs, num_of_instrs);
 
@@ -227,5 +229,6 @@ int main(int argc, char *argv[]) {
     //         ...
     // }
 
+    free_instr_maps(); // free memory allocated by instruction sets
     return 0;
 }
