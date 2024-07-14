@@ -44,7 +44,7 @@ opCombos = {
     ('v', 's', 's') : {'LVWS', 'SVWS'},
     ('v', 's', 'v') : {'LVI', 'SVI'},
     ('s', 's', 'i') : {'LS', 'SS', 'BEQ', 'BNE', 'BGT', 'BLT', 'BGE', 'BLE'},
-    ('s', 's', 's') : {'ADD', 'SUB', 'MUL', 'DIV', 'AND', 'OR', 'XOR', 'SLL', 'SRL', 'SRA'},
+    ('s', 's', 's') : {'ADD', 'SUB', 'AND', 'OR', 'XOR', 'SLL', 'SRL', 'SRA'},
     ('n', 'n', 'n') : {'CVM', 'HALT'}
 }
 
